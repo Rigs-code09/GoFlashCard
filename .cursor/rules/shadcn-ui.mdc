@@ -1,0 +1,107 @@
+---
+alwaysApply: true
+description: shadcn/ui component library setup and usage guidelines
+---
+
+# shadcn/ui Component Library Rules
+
+This project uses [shadcn/ui](https://ui.shadcn.com/) for UI components. Follow these guidelines for consistent component usage.
+
+## Initial Setup
+
+If shadcn/ui is not yet installed in the project, run:
+```bash
+npx shadcn@latest init
+```
+
+This will:
+- Install required dependencies
+- Set up the components.json configuration file
+- Configure the project structure for shadcn/ui
+
+## Adding Components
+
+When you need a specific shadcn/ui component that isn't installed, use:
+```bash
+npx shadcn@latest add [component-name]
+```
+
+Common components to install:
+- `npx shadcn@latest add button`
+- `npx shadcn@latest add card`
+- `npx shadcn@latest add input`
+- `npx shadcn@latest add form`
+- `npx shadcn@latest add dialog`
+- `npx shadcn@latest add dropdown-menu`
+- `npx shadcn@latest add toast`
+- `npx shadcn@latest add tabs`
+
+## Component Usage Guidelines
+
+1. **Import from components/ui**: Always import shadcn/ui components from `@/components/ui/[component-name]`
+   ```typescript
+   import { Button } from "@/components/ui/button"
+   import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+   ```
+
+2. **Prefer shadcn/ui over custom components**: When a shadcn/ui component exists for your use case, use it instead of creating custom components.
+
+3. **Customize with className**: Use Tailwind classes with `className` prop for customization:
+   ```typescript
+   <Button className="bg-primary hover:bg-primary/90" variant="default">
+     Click me
+   </Button>
+   ```
+
+4. **Follow component variants**: Use the built-in variants provided by shadcn/ui components:
+   - Button: `default`, `destructive`, `outline`, `secondary`, `ghost`, `link`
+   - Card: Use with `CardHeader`, `CardContent`, `CardFooter` for proper structure
+
+## File Structure
+
+Components should be organized as:
+```
+src/
+├── components/
+│   ├── ui/           # shadcn/ui components (auto-generated)
+│   └── custom/       # Custom project-specific components
+├── lib/
+│   └── utils.ts      # Utility functions (includes cn helper)
+└── app/              # Next.js app router files
+```
+
+## TypeScript Integration
+
+- All shadcn/ui components are fully typed
+- Use proper TypeScript interfaces when extending components
+- Leverage the `cn()` utility function from `@/lib/utils` for conditional classes
+
+## Best Practices
+
+1. **Always check if component exists**: Before creating a custom component, check if shadcn/ui has a suitable option
+2. **Use semantic HTML**: shadcn/ui components follow accessibility best practices
+3. **Consistent spacing**: Use Tailwind spacing utilities consistently across components
+4. **Dark mode support**: shadcn/ui components support dark mode out of the box
+5. **Form validation**: Use shadcn/ui form components with react-hook-form for forms
+
+## Common Patterns
+
+### Loading States
+```typescript
+import { Button } from "@/components/ui/button"
+import { Loader2 } from "lucide-react"
+
+<Button disabled={loading}>
+  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+  Submit
+</Button>
+```
+
+### Conditional Styling
+```typescript
+import { cn } from "@/lib/utils"
+
+<Card className={cn("p-4", isActive && "border-primary")}>
+  Content
+</Card>
+```

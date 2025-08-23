@@ -1,0 +1,432 @@
+---
+alwaysApply: true
+---
+
+# Server-Side Data Handling & Validation Rules
+
+This project follows strict patterns for data handling, authentication, and validation to ensure security and type safety.
+
+## Data Retrieval Rules
+
+### Server Components ONLY
+All data retrieval MUST be done in Server Components, never in Client Components.
+
+```typescript
+// ✅ CORRECT - Server Component
+import { auth } from "@clerk/nextjs/server"
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+import { eq } from "drizzle-orm"
+
+export default async function DecksPage() {
+  const { userId } = await auth()
+  
+  if (!userId) {
+    redirect("/sign-in")
+  }
+  
+  const decks = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId))
+  
+  return <DecksView decks={decks} />
+}
+```
+
+```typescript
+// ❌ INCORRECT - Client Component trying to fetch data
+"use client"
+import { useEffect, useState } from "react"
+
+export default function DecksPage() {
+  const [decks, setDecks] = useState([])
+  
+  useEffect(() => {
+    // NEVER do this - data fetching in client components
+    fetch("/api/decks").then(res => res.json()).then(setDecks)
+  }, [])
+  
+  return <DecksView decks={decks} />
+}
+```
+
+### Authentication in Server Components
+Always authenticate users in Server Components before data retrieval:
+
+```typescript
+import { auth } from "@clerk/nextjs/server"
+import { redirect } from "next/navigation"
+
+export default async function ProtectedPage() {
+  const { userId } = await auth()
+  
+  if (!userId) {
+    redirect("/sign-in")
+  }
+  
+  // Now safe to fetch user-specific data
+  const userData = await fetchUserData(userId)
+  
+  return <PageContent data={userData} />
+}
+```
+
+## Server Actions Rules
+
+### All Mutations via Server Actions
+ALL database mutations (INSERT, UPDATE, DELETE) MUST be done through Server Actions, never through API routes or client-side code.
+
+```typescript
+// ✅ CORRECT - Server Action
+"use server"
+
+import { auth } from "@clerk/nextjs/server"
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+import { createDeckSchema } from "@/lib/validations"
+import { revalidatePath } from "next/cache"
+
+export async function createDeck(data: CreateDeckInput) {
+  const { userId } = await auth()
+  
+  if (!userId) {
+    throw new Error("Unauthorized")
+  }
+  
+  // Validate input with Zod
+  const validatedData = createDeckSchema.parse(data)
+  
+  const [newDeck] = await db
+    .insert(decksTable)
+    .values({
+      ...validatedData,
+      userId,
+    })
+    .returning()
+  
+  revalidatePath("/decks")
+  return newDeck
+}
+```
+
+```typescript
+// ❌ INCORRECT - API Route for mutations
+export async function POST(request: Request) {
+  // NEVER use API routes for database mutations
+  const data = await request.json()
+  // ... mutation logic
+}
+```
+
+### Server Action Authentication
+ALWAYS authenticate users in Server Actions before any database operations:
+
+```typescript
+"use server"
+
+import { auth } from "@clerk/nextjs/server"
+
+export async function updateDeck(deckId: number, updates: UpdateDeckInput) {
+  const { userId } = await auth()
+  
+  if (!userId) {
+    throw new Error("Unauthorized - Please sign in")
+  }
+  
+  // Continue with validated operation
+}
+```
+
+## Zod Validation Rules
+
+### All Data Validation via Zod
+ALL data validation MUST be done using Zod schemas. Create validation schemas in `/lib/validations.ts`:
+
+```typescript
+// /lib/validations.ts
+import { z } from "zod"
+
+export const createDeckSchema = z.object({
+  title: z.string()
+    .min(1, "Title is required")
+    .max(255, "Title must be less than 255 characters"),
+  description: z.string()
+    .max(1000, "Description must be less than 1000 characters")
+    .optional(),
+})
+
+export const createCardSchema = z.object({
+  deckId: z.number().positive("Valid deck ID is required"),
+  front: z.string().min(1, "Front content is required"),
+  back: z.string().min(1, "Back content is required"),
+})
+
+export const updateDeckSchema = z.object({
+  title: z.string()
+    .min(1, "Title is required")
+    .max(255, "Title must be less than 255 characters")
+    .optional(),
+  description: z.string()
+    .max(1000, "Description must be less than 1000 characters")
+    .optional(),
+})
+
+// Export TypeScript types from schemas
+export type CreateDeckInput = z.infer<typeof createDeckSchema>
+export type CreateCardInput = z.infer<typeof createCardSchema>
+export type UpdateDeckInput = z.infer<typeof updateDeckSchema>
+```
+
+### Server Action Validation Pattern
+ALWAYS validate Server Action inputs with Zod:
+
+```typescript
+"use server"
+
+import { createDeckSchema, type CreateDeckInput } from "@/lib/validations"
+
+export async function createDeck(data: CreateDeckInput) {
+  const { userId } = await auth()
+  
+  if (!userId) {
+    throw new Error("Unauthorized")
+  }
+  
+  // ALWAYS validate with Zod
+  const validatedData = createDeckSchema.parse(data)
+  
+  // Use validatedData, not raw data
+  const result = await db.insert(decksTable).values({
+    ...validatedData,
+    userId,
+  })
+  
+  return result
+}
+```
+
+## TypeScript Type Requirements
+
+### NO FormData Types
+NEVER use FormData as parameter types in Server Actions. Always use properly typed interfaces:
+
+```typescript
+// ✅ CORRECT - Typed interface
+export async function createDeck(data: CreateDeckInput) {
+  const validatedData = createDeckSchema.parse(data)
+  // ...
+}
+
+// ❌ INCORRECT - FormData type
+export async function createDeck(formData: FormData) {
+  const title = formData.get("title") as string // Unsafe
+  // ...
+}
+```
+
+### Form Data Handling
+When working with forms, extract and type data properly:
+
+```typescript
+// ✅ CORRECT - Extract and validate form data
+export async function handleFormSubmit(formData: FormData) {
+  const rawData = {
+    title: formData.get("title") as string,
+    description: formData.get("description") as string,
+  }
+  
+  // Pass typed data to actual server action
+  return await createDeck(rawData)
+}
+```
+
+## Error Handling Patterns
+
+### Server Action Error Handling
+Always handle errors gracefully in Server Actions:
+
+```typescript
+"use server"
+
+import { ZodError } from "zod"
+
+export async function createDeck(data: CreateDeckInput) {
+  try {
+    const { userId } = await auth()
+    
+    if (!userId) {
+      return { 
+        success: false, 
+        error: "Authentication required" 
+      }
+    }
+    
+    const validatedData = createDeckSchema.parse(data)
+    
+    const [newDeck] = await db
+      .insert(decksTable)
+      .values({ ...validatedData, userId })
+      .returning()
+    
+    revalidatePath("/decks")
+    
+    return { 
+      success: true, 
+      data: newDeck 
+    }
+    
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return { 
+        success: false, 
+        error: "Validation failed", 
+        details: error.errors 
+      }
+    }
+    
+    console.error("Server action error:", error)
+    return { 
+      success: false, 
+      error: "An unexpected error occurred" 
+    }
+  }
+}
+```
+
+### Client-Side Error Display
+Handle Server Action errors in components:
+
+```typescript
+"use client"
+
+import { createDeck } from "@/app/actions"
+import { useState } from "react"
+
+export function CreateDeckForm() {
+  const [error, setError] = useState<string | null>(null)
+  
+  async function handleSubmit(formData: FormData) {
+    const data = {
+      title: formData.get("title") as string,
+      description: formData.get("description") as string,
+    }
+    
+    const result = await createDeck(data)
+    
+    if (!result.success) {
+      setError(result.error)
+      return
+    }
+    
+    // Success handling
+    setError(null)
+  }
+  
+  return (
+    <form action={handleSubmit}>
+      {error && <div className="text-red-500">{error}</div>}
+      {/* form fields */}
+    </form>
+  )
+}
+```
+
+## Security Rules
+
+### Data Ownership Verification
+ALWAYS verify data ownership in Server Actions:
+
+```typescript
+"use server"
+
+export async function updateDeck(deckId: number, updates: UpdateDeckInput) {
+  const { userId } = await auth()
+  
+  if (!userId) {
+    throw new Error("Unauthorized")
+  }
+  
+  const validatedData = updateDeckSchema.parse(updates)
+  
+  // ALWAYS verify ownership
+  const [updatedDeck] = await db
+    .update(decksTable)
+    .set(validatedData)
+    .where(and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId) // Critical: verify ownership
+    ))
+    .returning()
+  
+  if (!updatedDeck) {
+    throw new Error("Deck not found or access denied")
+  }
+  
+  return updatedDeck
+}
+```
+
+## Cache Revalidation
+
+### Always Revalidate After Mutations
+Revalidate relevant paths after successful mutations:
+
+```typescript
+"use server"
+
+import { revalidatePath, revalidateTag } from "next/cache"
+
+export async function createDeck(data: CreateDeckInput) {
+  // ... validation and mutation logic
+  
+  // Revalidate the decks list page
+  revalidatePath("/decks")
+  
+  // Optionally revalidate by tag
+  revalidateTag("user-decks")
+  
+  return result
+}
+```
+
+## Forbidden Patterns
+
+❌ **NEVER do these:**
+- Data fetching in Client Components
+- Database mutations through API routes
+- Using FormData as Server Action parameter types
+- Skipping Zod validation for any user input
+- Missing authentication checks in Server Actions
+- Operations without ownership verification
+- Using raw form data without validation
+
+✅ **ALWAYS do these:**
+- Fetch data in Server Components only
+- Use Server Actions for all mutations
+- Define Zod schemas for all data validation
+- Use TypeScript interfaces derived from Zod schemas
+- Authenticate users before any protected operations
+- Verify data ownership in mutations
+- Handle errors gracefully with proper types
+- Revalidate cache after successful mutations
+
+## File Structure for Actions
+
+Organize Server Actions in a dedicated directory:
+
+```
+src/
+├── app/
+│   ├── actions/          # Server Actions directory
+│   │   ├── deck-actions.ts
+│   │   ├── card-actions.ts
+│   │   └── index.ts
+│   └── [pages]/
+├── lib/
+│   ├── validations.ts    # Zod schemas
+│   └── auth.ts          # Auth utilities
+└── components/
+```
+
+This ensures a clean separation of concerns and makes Server Actions easily discoverable and maintainable.

@@ -1,0 +1,174 @@
+---
+globs: *.ts,*.tsx
+description: React component patterns and shadcn/ui integration guidelines
+---
+
+# React Component Patterns with shadcn/ui
+
+When working with React components in this project, follow these patterns for consistent shadcn/ui integration.
+
+## Component Structure
+
+```typescript
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+
+interface ComponentProps {
+  className?: string
+  // ... other props
+}
+
+export function MyComponent({ className, ...props }: ComponentProps) {
+  return (
+    <div className={cn("default-classes", className)}>
+      {/* Component content */}
+    </div>
+  )
+}
+```
+
+## Prop Forwarding with shadcn/ui
+
+When creating custom components that wrap shadcn/ui components:
+
+```typescript
+import { Button, ButtonProps } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+
+interface CustomButtonProps extends ButtonProps {
+  isLoading?: boolean
+}
+
+export function CustomButton({ 
+  className, 
+  isLoading, 
+  children, 
+  ...props 
+}: CustomButtonProps) {
+  return (
+    <Button 
+      className={cn("custom-styles", className)} 
+      disabled={isLoading || props.disabled}
+      {...props}
+    >
+      {isLoading ? "Loading..." : children}
+    </Button>
+  )
+}
+```
+
+## Form Components
+
+Use shadcn/ui form components with react-hook-form:
+
+```typescript
+import { useForm } from "react-hook-form"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+
+export function MyForm() {
+  const form = useForm()
+  
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)}>
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input placeholder="Enter email" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit">Submit</Button>
+      </form>
+    </Form>
+  )
+}
+```
+
+## Conditional Rendering with Variants
+
+```typescript
+import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+
+interface StatusProps {
+  status: "success" | "error" | "warning"
+  message: string
+}
+
+export function StatusAlert({ status, message }: StatusProps) {
+  const variant = status === "error" ? "destructive" : "default"
+  
+  return (
+    <Alert variant={variant}>
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
+  )
+}
+```
+
+## Component Composition
+
+When building complex UI, compose shadcn/ui components:
+
+```typescript
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+
+export function FlashCard({ title, content, difficulty }: FlashCardProps) {
+  return (
+    <Card className="w-full max-w-md">
+      <CardHeader>
+        <div className="flex justify-between items-start">
+          <CardTitle>{title}</CardTitle>
+          <Badge variant={difficulty === "hard" ? "destructive" : "secondary"}>
+            {difficulty}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <CardDescription>{content}</CardDescription>
+        <div className="flex gap-2 mt-4">
+          <Button variant="outline" size="sm">Easy</Button>
+          <Button variant="outline" size="sm">Hard</Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+## State Management with shadcn/ui
+
+```typescript
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+
+export function DialogExample() {
+  const [open, setOpen] = useState(false)
+  
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button>Open Dialog</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Dialog Title</DialogTitle>
+        </DialogHeader>
+        {/* Dialog content */}
+      </DialogContent>
+    </Dialog>
+  )
+}
+```

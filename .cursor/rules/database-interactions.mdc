@@ -1,0 +1,775 @@
+---
+alwaysApply: true
+---
+
+# Database Interaction Rules
+
+All database interactions in this project MUST use Drizzle ORM with the defined schema. Follow these patterns strictly for consistency and type safety.
+
+## Database Setup
+
+Always import from the centralized database configuration:
+
+```typescript
+import { db } from "@/db"
+import { decksTable, cardsTable } from "@/db/schema"
+```
+
+## Schema Reference
+
+### Decks Table
+- `id`: Auto-generated primary key (integer)
+- `title`: Required varchar(255)
+- `description`: Optional text
+- `userId`: Required varchar(255) - Clerk user ID
+- `createdAt`: Auto-generated timestamp
+- `updatedAt`: Auto-generated timestamp
+
+### Cards Table
+- `id`: Auto-generated primary key (integer)
+- `deckId`: Required foreign key to decksTable.id (cascade delete)
+- `front`: Required text
+- `back`: Required text
+- `createdAt`: Auto-generated timestamp
+- `updatedAt`: Auto-generated timestamp
+
+## CRUD Operations
+
+### Create Operations
+
+#### Create Deck
+```typescript
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+
+async function createDeck(title: string, description?: string, userId: string) {
+  const [newDeck] = await db
+    .insert(decksTable)
+    .values({
+      title,
+      description,
+      userId,
+    })
+    .returning()
+  
+  return newDeck
+}
+```
+
+#### Create Card
+```typescript
+import { db } from "@/db"
+import { cardsTable } from "@/db/schema"
+
+async function createCard(deckId: number, front: string, back: string) {
+  const [newCard] = await db
+    .insert(cardsTable)
+    .values({
+      deckId,
+      front,
+      back,
+    })
+    .returning()
+  
+  return newCard
+}
+```
+
+### Read Operations
+
+#### Get User's Decks
+```typescript
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+import { eq } from "drizzle-orm"
+
+async function getUserDecks(userId: string) {
+  const decks = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId))
+    .orderBy(decksTable.createdAt)
+  
+  return decks
+}
+```
+
+#### Get Deck with Cards
+```typescript
+import { db } from "@/db"
+import { decksTable, cardsTable } from "@/db/schema"
+import { eq } from "drizzle-orm"
+
+async function getDeckWithCards(deckId: number, userId: string) {
+  // Verify deck ownership
+  const [deck] = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.id, deckId))
+    .where(eq(decksTable.userId, userId))
+  
+  if (!deck) return null
+  
+  const cards = await db
+    .select()
+    .from(cardsTable)
+    .where(eq(cardsTable.deckId, deckId))
+    .orderBy(cardsTable.createdAt)
+  
+  return { ...deck, cards }
+}
+```
+
+### Update Operations
+
+#### Update Deck
+```typescript
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
+
+async function updateDeck(
+  deckId: number, 
+  userId: string, 
+  updates: { title?: string; description?: string }
+) {
+  const [updatedDeck] = await db
+    .update(decksTable)
+    .set({
+      ...updates,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    ))
+    .returning()
+  
+  return updatedDeck
+}
+```
+
+#### Update Card
+```typescript
+import { db } from "@/db"
+import { cardsTable, decksTable } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
+
+async function updateCard(
+  cardId: number,
+  userId: string,
+  updates: { front?: string; back?: string }
+) {
+  // Verify ownership through deck relationship
+  const [updatedCard] = await db
+    .update(cardsTable)
+    .set({
+      ...updates,
+      updatedAt: new Date(),
+    })
+    .from(cardsTable)
+    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+    .where(and(
+      eq(cardsTable.id, cardId),
+      eq(decksTable.userId, userId)
+    ))
+    .returning()
+  
+  return updatedCard
+}
+```
+
+### Delete Operations
+
+#### Delete Deck (with cascade)
+```typescript
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
+
+async function deleteDeck(deckId: number, userId: string) {
+  // Cards will be automatically deleted due to cascade
+  const [deletedDeck] = await db
+    .delete(decksTable)
+    .where(and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    ))
+    .returning()
+  
+  return deletedDeck
+}
+```
+
+#### Delete Card
+```typescript
+import { db } from "@/db"
+import { cardsTable, decksTable } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
+
+async function deleteCard(cardId: number, userId: string) {
+  // Verify ownership through deck relationship
+  const [deletedCard] = await db
+    .delete(cardsTable)
+    .from(cardsTable)
+    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+    .where(and(
+      eq(cardsTable.id, cardId),
+      eq(decksTable.userId, userId)
+    ))
+    .returning()
+  
+  return deletedCard
+}
+```
+
+## Advanced Queries
+
+### Get Deck Statistics
+```typescript
+import { db } from "@/db"
+import { decksTable, cardsTable } from "@/db/schema"
+import { eq, count } from "drizzle-orm"
+
+async function getDeckStats(userId: string) {
+  const stats = await db
+    .select({
+      deckId: decksTable.id,
+      title: decksTable.title,
+      cardCount: count(cardsTable.id),
+    })
+    .from(decksTable)
+    .leftJoin(cardsTable, eq(decksTable.id, cardsTable.deckId))
+    .where(eq(decksTable.userId, userId))
+    .groupBy(decksTable.id, decksTable.title)
+  
+  return stats
+}
+```
+
+### Search Cards in Deck
+```typescript
+import { db } from "@/db"
+import { cardsTable, decksTable } from "@/db/schema"
+import { eq, and, ilike, or } from "drizzle-orm"
+
+async function searchCardsInDeck(deckId: number, userId: string, query: string) {
+  const cards = await db
+    .select({
+      id: cardsTable.id,
+      front: cardsTable.front,
+      back: cardsTable.back,
+      createdAt: cardsTable.createdAt,
+    })
+    .from(cardsTable)
+    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+    .where(and(
+      eq(decksTable.userId, userId),
+      eq(cardsTable.deckId, deckId),
+      or(
+        ilike(cardsTable.front, `%${query}%`),
+        ilike(cardsTable.back, `%${query}%`)
+      )
+    ))
+  
+  return cards
+}
+```
+
+## Security Rules
+
+### Always Verify User Ownership
+- **NEVER** perform operations without verifying `userId` matches the authenticated user
+- Always include `userId` in WHERE clauses for deck operations
+- For card operations, verify ownership through the deck relationship
+
+### Use Prepared Statements
+Drizzle automatically uses prepared statements, but always use parameterized queries:
+
+```typescript
+// ✅ CORRECT - Parameterized
+await db.select().from(decksTable).where(eq(decksTable.userId, userId))
+
+// ❌ INCORRECT - String interpolation
+await db.execute(sql`SELECT * FROM decks WHERE user_id = '${userId}'`)
+```
+
+## Transaction Patterns
+
+### Bulk Operations
+```typescript
+import { db } from "@/db"
+import { cardsTable } from "@/db/schema"
+
+async function createMultipleCards(deckId: number, cards: Array<{ front: string; back: string }>) {
+  await db.transaction(async (tx) => {
+    // Verify deck ownership first
+    const [deck] = await tx
+      .select()
+      .from(decksTable)
+      .where(and(
+        eq(decksTable.id, deckId),
+        eq(decksTable.userId, userId)
+      ))
+    
+    if (!deck) {
+      throw new Error("Deck not found or access denied")
+    }
+    
+    // Insert all cards
+    await tx
+      .insert(cardsTable)
+      .values(cards.map(card => ({ ...card, deckId })))
+  })
+}
+```
+
+## Error Handling
+
+### Standard Error Patterns
+```typescript
+async function safeGetDeck(deckId: number, userId: string) {
+  try {
+    const [deck] = await db
+      .select()
+      .from(decksTable)
+      .where(and(
+        eq(decksTable.id, deckId),
+        eq(decksTable.userId, userId)
+      ))
+    
+    if (!deck) {
+      throw new Error("Deck not found")
+    }
+    
+    return deck
+  } catch (error) {
+    console.error("Database error:", error)
+    throw new Error("Failed to fetch deck")
+  }
+}
+```
+
+## Type Safety
+
+### Always use proper TypeScript types
+```typescript
+import type { InferSelectModel, InferInsertModel } from "drizzle-orm"
+import { decksTable, cardsTable } from "@/db/schema"
+
+export type Deck = InferSelectModel<typeof decksTable>
+export type NewDeck = InferInsertModel<typeof decksTable>
+export type Card = InferSelectModel<typeof cardsTable>
+export type NewCard = InferInsertModel<typeof cardsTable>
+```
+
+## Best Practices
+
+1. **Always use the schema imports** - Never write raw SQL
+2. **Include proper WHERE clauses** - Always verify user ownership
+3. **Use transactions for multiple operations** - Maintain data consistency
+4. **Return proper types** - Use `InferSelectModel` and `InferInsertModel`
+5. **Handle errors gracefully** - Provide meaningful error messages
+6. **Use proper ordering** - Always specify `orderBy` for predictable results
+7. **Leverage cascade deletes** - The schema handles card deletion when decks are deleted
+
+## Forbidden Patterns
+
+❌ **NEVER do these:**
+- Raw SQL queries without proper parameterization
+- Operations without user ownership verification
+- Direct table access without going through the schema
+- Mutations without proper error handling
+- Missing transaction boundaries for related operations
+
+✅ **Always do these:**
+- Use Drizzle schema and query builders
+- Verify user ownership for all operations
+- Handle errors with proper try/catch blocks
+- Use transactions for multi-table operations
+- Include proper TypeScript types # Database Interaction Rules
+
+All database interactions in this project MUST use Drizzle ORM with the defined schema. Follow these patterns strictly for consistency and type safety.
+
+## Database Setup
+
+Always import from the centralized database configuration:
+
+```typescript
+import { db } from "@/db"
+import { decksTable, cardsTable } from "@/db/schema"
+```
+
+## Schema Reference
+
+### Decks Table
+- `id`: Auto-generated primary key (integer)
+- `title`: Required varchar(255)
+- `description`: Optional text
+- `userId`: Required varchar(255) - Clerk user ID
+- `createdAt`: Auto-generated timestamp
+- `updatedAt`: Auto-generated timestamp
+
+### Cards Table
+- `id`: Auto-generated primary key (integer)
+- `deckId`: Required foreign key to decksTable.id (cascade delete)
+- `front`: Required text
+- `back`: Required text
+- `createdAt`: Auto-generated timestamp
+- `updatedAt`: Auto-generated timestamp
+
+## CRUD Operations
+
+### Create Operations
+
+#### Create Deck
+```typescript
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+
+async function createDeck(title: string, description?: string, userId: string) {
+  const [newDeck] = await db
+    .insert(decksTable)
+    .values({
+      title,
+      description,
+      userId,
+    })
+    .returning()
+  
+  return newDeck
+}
+```
+
+#### Create Card
+```typescript
+import { db } from "@/db"
+import { cardsTable } from "@/db/schema"
+
+async function createCard(deckId: number, front: string, back: string) {
+  const [newCard] = await db
+    .insert(cardsTable)
+    .values({
+      deckId,
+      front,
+      back,
+    })
+    .returning()
+  
+  return newCard
+}
+```
+
+### Read Operations
+
+#### Get User's Decks
+```typescript
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+import { eq } from "drizzle-orm"
+
+async function getUserDecks(userId: string) {
+  const decks = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId))
+    .orderBy(decksTable.createdAt)
+  
+  return decks
+}
+```
+
+#### Get Deck with Cards
+```typescript
+import { db } from "@/db"
+import { decksTable, cardsTable } from "@/db/schema"
+import { eq } from "drizzle-orm"
+
+async function getDeckWithCards(deckId: number, userId: string) {
+  // Verify deck ownership
+  const [deck] = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.id, deckId))
+    .where(eq(decksTable.userId, userId))
+  
+  if (!deck) return null
+  
+  const cards = await db
+    .select()
+    .from(cardsTable)
+    .where(eq(cardsTable.deckId, deckId))
+    .orderBy(cardsTable.createdAt)
+  
+  return { ...deck, cards }
+}
+```
+
+### Update Operations
+
+#### Update Deck
+```typescript
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
+
+async function updateDeck(
+  deckId: number, 
+  userId: string, 
+  updates: { title?: string; description?: string }
+) {
+  const [updatedDeck] = await db
+    .update(decksTable)
+    .set({
+      ...updates,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    ))
+    .returning()
+  
+  return updatedDeck
+}
+```
+
+#### Update Card
+```typescript
+import { db } from "@/db"
+import { cardsTable, decksTable } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
+
+async function updateCard(
+  cardId: number,
+  userId: string,
+  updates: { front?: string; back?: string }
+) {
+  // Verify ownership through deck relationship
+  const [updatedCard] = await db
+    .update(cardsTable)
+    .set({
+      ...updates,
+      updatedAt: new Date(),
+    })
+    .from(cardsTable)
+    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+    .where(and(
+      eq(cardsTable.id, cardId),
+      eq(decksTable.userId, userId)
+    ))
+    .returning()
+  
+  return updatedCard
+}
+```
+
+### Delete Operations
+
+#### Delete Deck (with cascade)
+```typescript
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
+
+async function deleteDeck(deckId: number, userId: string) {
+  // Cards will be automatically deleted due to cascade
+  const [deletedDeck] = await db
+    .delete(decksTable)
+    .where(and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    ))
+    .returning()
+  
+  return deletedDeck
+}
+```
+
+#### Delete Card
+```typescript
+import { db } from "@/db"
+import { cardsTable, decksTable } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
+
+async function deleteCard(cardId: number, userId: string) {
+  // Verify ownership through deck relationship
+  const [deletedCard] = await db
+    .delete(cardsTable)
+    .from(cardsTable)
+    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+    .where(and(
+      eq(cardsTable.id, cardId),
+      eq(decksTable.userId, userId)
+    ))
+    .returning()
+  
+  return deletedCard
+}
+```
+
+## Advanced Queries
+
+### Get Deck Statistics
+```typescript
+import { db } from "@/db"
+import { decksTable, cardsTable } from "@/db/schema"
+import { eq, count } from "drizzle-orm"
+
+async function getDeckStats(userId: string) {
+  const stats = await db
+    .select({
+      deckId: decksTable.id,
+      title: decksTable.title,
+      cardCount: count(cardsTable.id),
+    })
+    .from(decksTable)
+    .leftJoin(cardsTable, eq(decksTable.id, cardsTable.deckId))
+    .where(eq(decksTable.userId, userId))
+    .groupBy(decksTable.id, decksTable.title)
+  
+  return stats
+}
+```
+
+### Search Cards in Deck
+```typescript
+import { db } from "@/db"
+import { cardsTable, decksTable } from "@/db/schema"
+import { eq, and, ilike, or } from "drizzle-orm"
+
+async function searchCardsInDeck(deckId: number, userId: string, query: string) {
+  const cards = await db
+    .select({
+      id: cardsTable.id,
+      front: cardsTable.front,
+      back: cardsTable.back,
+      createdAt: cardsTable.createdAt,
+    })
+    .from(cardsTable)
+    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+    .where(and(
+      eq(decksTable.userId, userId),
+      eq(cardsTable.deckId, deckId),
+      or(
+        ilike(cardsTable.front, `%${query}%`),
+        ilike(cardsTable.back, `%${query}%`)
+      )
+    ))
+  
+  return cards
+}
+```
+
+## Security Rules
+
+### Always Verify User Ownership
+- **NEVER** perform operations without verifying `userId` matches the authenticated user
+- Always include `userId` in WHERE clauses for deck operations
+- For card operations, verify ownership through the deck relationship
+
+### Use Prepared Statements
+Drizzle automatically uses prepared statements, but always use parameterized queries:
+
+```typescript
+// ✅ CORRECT - Parameterized
+await db.select().from(decksTable).where(eq(decksTable.userId, userId))
+
+// ❌ INCORRECT - String interpolation
+await db.execute(sql`SELECT * FROM decks WHERE user_id = '${userId}'`)
+```
+
+## Transaction Patterns
+
+### Bulk Operations
+```typescript
+import { db } from "@/db"
+import { cardsTable } from "@/db/schema"
+
+async function createMultipleCards(deckId: number, cards: Array<{ front: string; back: string }>) {
+  await db.transaction(async (tx) => {
+    // Verify deck ownership first
+    const [deck] = await tx
+      .select()
+      .from(decksTable)
+      .where(and(
+        eq(decksTable.id, deckId),
+        eq(decksTable.userId, userId)
+      ))
+    
+    if (!deck) {
+      throw new Error("Deck not found or access denied")
+    }
+    
+    // Insert all cards
+    await tx
+      .insert(cardsTable)
+      .values(cards.map(card => ({ ...card, deckId })))
+  })
+}
+```
+
+## Error Handling
+
+### Standard Error Patterns
+```typescript
+async function safeGetDeck(deckId: number, userId: string) {
+  try {
+    const [deck] = await db
+      .select()
+      .from(decksTable)
+      .where(and(
+        eq(decksTable.id, deckId),
+        eq(decksTable.userId, userId)
+      ))
+    
+    if (!deck) {
+      throw new Error("Deck not found")
+    }
+    
+    return deck
+  } catch (error) {
+    console.error("Database error:", error)
+    throw new Error("Failed to fetch deck")
+  }
+}
+```
+
+## Type Safety
+
+### Always use proper TypeScript types
+```typescript
+import type { InferSelectModel, InferInsertModel } from "drizzle-orm"
+import { decksTable, cardsTable } from "@/db/schema"
+
+export type Deck = InferSelectModel<typeof decksTable>
+export type NewDeck = InferInsertModel<typeof decksTable>
+export type Card = InferSelectModel<typeof cardsTable>
+export type NewCard = InferInsertModel<typeof cardsTable>
+```
+
+## Best Practices
+
+1. **Always use the schema imports** - Never write raw SQL
+2. **Include proper WHERE clauses** - Always verify user ownership
+3. **Use transactions for multiple operations** - Maintain data consistency
+4. **Return proper types** - Use `InferSelectModel` and `InferInsertModel`
+5. **Handle errors gracefully** - Provide meaningful error messages
+6. **Use proper ordering** - Always specify `orderBy` for predictable results
+7. **Leverage cascade deletes** - The schema handles card deletion when decks are deleted
+
+## Forbidden Patterns
+
+❌ **NEVER do these:**
+- Raw SQL queries without proper parameterization
+- Operations without user ownership verification
+- Direct table access without going through the schema
+- Mutations without proper error handling
+- Missing transaction boundaries for related operations
+
+✅ **Always do these:**
+- Use Drizzle schema and query builders
+- Verify user ownership for all operations
+- Handle errors with proper try/catch blocks
+- Use transactions for multi-table operations
+- Include proper TypeScript types 

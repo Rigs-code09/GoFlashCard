@@ -1,0 +1,74 @@
+---
+description: Quick reference for shadcn/ui setup and component installation
+---
+
+# shadcn/ui Quick Setup Commands
+
+## Initial Setup (if not already installed)
+```bash
+npx shadcn@latest init
+```
+
+## Common Component Installation Commands
+
+### Essential Components
+```bash
+npx shadcn@latest add button
+npx shadcn@latest add card
+npx shadcn@latest add input
+npx shadcn@latest add form
+```
+
+### Layout & Navigation
+```bash
+npx shadcn@latest add navigation-menu
+npx shadcn@latest add separator
+npx shadcn@latest add tabs
+npx shadcn@latest add sheet
+```
+
+### Feedback & Alerts
+```bash
+npx shadcn@latest add alert
+npx shadcn@latest add toast
+npx shadcn@latest add progress
+npx shadcn@latest add badge
+```
+
+### Overlays & Dialogs
+```bash
+npx shadcn@latest add dialog
+npx shadcn@latest add popover
+npx shadcn@latest add dropdown-menu
+npx shadcn@latest add tooltip
+```
+
+### Data Display
+```bash
+npx shadcn@latest add table
+npx shadcn@latest add accordion
+npx shadcn@latest add collapsible
+npx shadcn@latest add avatar
+```
+
+### Form Components
+```bash
+npx shadcn@latest add checkbox
+npx shadcn@latest add radio-group
+npx shadcn@latest add select
+npx shadcn@latest add textarea
+npx shadcn@latest add switch
+npx shadcn@latest add slider
+```
+
+## Install Multiple Components at Once
+```bash
+npx shadcn@latest add button card input form dialog toast
+```
+
+## Check Available Components
+```bash
+npx shadcn@latest add
+```
+
+Use these commands in the terminal whenever you need to add new shadcn/ui components to the project.
