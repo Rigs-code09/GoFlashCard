@@ -1,8 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getUserDeckStats } from "@/db/queries";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { getUserDecks } from "@/db/queries";
+import { Plus } from "lucide-react";
 
 export default async function DashboardPage() {
   const { userId } = await auth();
@@ -11,15 +13,15 @@ export default async function DashboardPage() {
     redirect("/");
   }
 
-  // Get user's deck statistics using query helper
-  const totalDecks = await getUserDeckStats(userId);
+  // Get user's decks
+  const decks = await getUserDecks(userId);
 
   return (
     <div className="min-h-[calc(100vh-73px)] bg-background">
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-6xl mx-auto space-y-8">
+        <div className="max-w-4xl mx-auto space-y-8">
           {/* Welcome Section */}
-          <div className="space-y-4">
+          <div className="text-center space-y-4">
             <h1 className="text-4xl font-bold tracking-tight text-foreground">
               Welcome to your Dashboard
             </h1>
@@ -28,113 +30,60 @@ export default async function DashboardPage() {
             </p>
           </div>
 
-          {/* Quick Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total Decks
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-foreground">{totalDecks}</div>
-                <CardDescription className="text-xs text-muted-foreground">
-                  {totalDecks === 0 ? "Create your first deck to get started" : "Keep building your collection"}
-                </CardDescription>
-              </CardContent>
-            </Card>
+          {/* User Decks */}
+          <div className="space-y-6">
+            {decks.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {decks.map((deck) => (
+                  <Link key={deck.id} href={`/decks/${deck.id}`} className="block">
+                    <Card className="bg-card border-border hover:shadow-lg transition-shadow flex flex-col h-full cursor-pointer hover:border-primary/50">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-lg font-semibold line-clamp-2 min-h-[3.5rem] leading-relaxed">
+                          {deck.title}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex-1 pt-0">
+                        {deck.description ? (
+                          <CardDescription className="text-sm text-muted-foreground line-clamp-3">
+                            {deck.description}
+                          </CardDescription>
+                        ) : (
+                          <CardDescription className="text-sm text-muted-foreground italic">
+                            No description provided
+                          </CardDescription>
+                        )}
+                      </CardContent>
+                      <CardFooter className="pt-4 border-t border-border/50">
+                        <span className="text-xs text-muted-foreground">
+                          Updated {new Date(deck.updatedAt).toLocaleDateString()}
+                        </span>
+                      </CardFooter>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-lg text-muted-foreground mb-4">
+                  You haven't created any decks yet.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Get started by creating your first flashcard deck!
+                </p>
+              </div>
+            )}
 
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Study Sessions
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-foreground">0</div>
-                <CardDescription className="text-xs text-muted-foreground">
-                  Start studying to track your progress
-                </CardDescription>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total Cards
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-foreground">0</div>
-                <CardDescription className="text-xs text-muted-foreground">
-                  Add cards to your decks to start learning
-                </CardDescription>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="space-y-4">
-            <h2 className="text-2xl font-semibold text-foreground">Quick Actions</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Card className="bg-card border-border hover:shadow-lg transition-shadow cursor-pointer">
-                <CardHeader>
-                  <CardTitle className="text-lg">Create New Deck</CardTitle>
-                  <CardDescription>
-                    Start a new flashcard deck for any subject or topic.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="default" className="w-full">
-                    Create Deck
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card border-border hover:shadow-lg transition-shadow cursor-pointer">
-                <CardHeader>
-                  <CardTitle className="text-lg">Browse My Decks</CardTitle>
-                  <CardDescription>
-                    View and manage all your existing flashcard decks.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="outline" className="w-full">
-                    View Decks
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card border-border hover:shadow-lg transition-shadow cursor-pointer">
-                <CardHeader>
-                  <CardTitle className="text-lg">Study Mode</CardTitle>
-                  <CardDescription>
-                    Start a study session with your flashcards.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="secondary" className="w-full" disabled={totalDecks === 0}>
-                    {totalDecks === 0 ? "Create a deck first" : "Start Studying"}
-                  </Button>
-                </CardContent>
-              </Card>
+            {/* Create New Deck Button */}
+            <div className="flex justify-center pt-6">
+              <Button 
+                size="lg" 
+                className="min-w-[200px]"
+                variant="default"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create New Deck
+              </Button>
             </div>
-          </div>
-
-          {/* Recent Activity */}
-          <div className="space-y-4">
-            <h2 className="text-2xl font-semibold text-foreground">Recent Activity</h2>
-            <Card className="bg-card border-border">
-              <CardContent className="pt-6">
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">
-                    {totalDecks === 0 
-                      ? "Create your first deck to see activity here." 
-                      : "Your recent study sessions and deck updates will appear here."}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>
