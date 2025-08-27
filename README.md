@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Go Flash Card
 
-## Getting Started
+A modern flashcard application built with Next.js, Clerk authentication, and Drizzle ORM.
 
-First, run the development server:
+## Development Setup
 
+### Prerequisites
+- Node.js 18+ 
+- npm or yarn
+
+### Installation
+
+1. Navigate to the project directory:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd go-flash-card
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Set up environment variables:
+Create a `.env.local` file with your Clerk keys:
+```env
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+DATABASE_URL="your-database-connection-string"
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Start the development server:
+```bash
+npm run dev
+```
 
-## Learn More
+## Common Development Issues
 
-To learn more about Next.js, take a look at the following resources:
+### SSL Certificate Errors
+If you encounter "unable to get local issuer certificate" errors (common in corporate networks):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- The Next.js configuration has been set to handle SSL issues in development
+- These errors don't affect the application functionality
+- For Google Fonts failures, fallback fonts are automatically used
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Clerk Development Key Warning
+The warning "Clerk has been loaded with development keys" is normal for development environments:
 
-## Deploy on Vercel
+- Development instances have usage limits but are perfect for development
+- Switch to production keys when deploying to production
+- Learn more: https://clerk.com/docs/deployments/overview
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Dialog Accessibility Warnings
+All Dialog components now include proper accessibility attributes (DialogDescription) to ensure screen reader compatibility.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Technology Stack
+
+- **Next.js 15** - React framework
+- **Clerk** - Authentication
+- **Drizzle ORM** - Database ORM  
+- **shadcn/ui** - UI components
+- **Tailwind CSS** - Styling
+- **TypeScript** - Type safety
+
+## Project Structure
+
+```
+src/
+├── app/                 # Next.js app router
+├── components/          # React components
+│   ├── ui/             # shadcn/ui components
+│   └── auth-modals.tsx # Authentication components
+├── db/                 # Database schema and config
+└── lib/               # Utility functions
+```

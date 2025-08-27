@@ -1,11 +1,26 @@
+
 ---
 alwaysApply: true
 description: shadcn/ui component library setup and usage guidelines
 ---
 
-# shadcn/ui Component Library Rules
+# shadcn/ui Component Library Rules - STRICT ENFORCEMENT
 
 This project uses [shadcn/ui](https://ui.shadcn.com/) for UI components. Follow these guidelines for consistent component usage.
+
+## ⚠️ CRITICAL RULE: SHADCN/UI COMPONENTS ONLY
+
+**ABSOLUTELY NO CUSTOM UI COMPONENTS ARE ALLOWED IN THIS PROJECT.**
+
+- ✅ **ONLY USE** shadcn/ui components from `@/components/ui/`
+- ❌ **NEVER CREATE** custom UI components, buttons, cards, forms, or any other UI elements
+- ❌ **NEVER CREATE** components in `@/components/custom/` or similar directories
+- ❌ **NEVER BUILD** UI from scratch using raw HTML/Tailwind without shadcn/ui
+
+If you need a UI component that doesn't exist in shadcn/ui, you MUST:
+1. Check if shadcn/ui has a suitable component first
+2. If not available, install the closest shadcn/ui component and customize it with Tailwind classes
+3. If absolutely necessary, request guidance before creating any non-shadcn/ui component
 
 ## Initial Setup
 
@@ -36,17 +51,70 @@ Common components to install:
 - `npx shadcn@latest add toast`
 - `npx shadcn@latest add tabs`
 
-## Component Usage Guidelines
+## Clerk Authentication Integration - MANDATORY PATTERNS
 
-1. **Import from components/ui**: Always import shadcn/ui components from `@/components/ui/[component-name]`
+### Authentication UI Requirements
+
+**ALL Clerk authentication MUST use shadcn/ui components with modal patterns:**
+
+1. **Sign In/Sign Up Buttons**: ONLY use shadcn/ui Button components
+2. **Modal Integration**: Use shadcn/ui Dialog component to launch Clerk authentication
+3. **NO Default Clerk UI**: Never use Clerk's default UI components directly
+
+### Required Implementation Pattern
+
+```typescript
+// ✅ CORRECT - shadcn/ui Button with Dialog for Clerk auth
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { SignIn, SignUp } from "@clerk/nextjs"
+
+// Sign In Modal
+<Dialog>
+  <DialogTrigger asChild>
+    <Button variant="default">Sign In</Button>
+  </DialogTrigger>
+  <DialogContent>
+    <SignIn />
+  </DialogContent>
+</Dialog>
+
+// Sign Up Modal  
+<Dialog>
+  <DialogTrigger asChild>
+    <Button variant="outline">Sign Up</Button>
+  </DialogTrigger>
+  <DialogContent>
+    <SignUp />
+  </DialogContent>
+</Dialog>
+```
+
+```typescript
+// ❌ INCORRECT - Custom button or direct Clerk UI
+<button onClick={() => openSignIn()}>Sign In</button> // NO custom buttons
+<SignIn /> // NO direct Clerk components without modal wrapper
+```
+
+### Required shadcn/ui Components for Clerk Integration
+
+You MUST install these components for proper Clerk integration:
+```bash
+npx shadcn@latest add button dialog
+```
+
+## Component Usage Guidelines - STRICT ENFORCEMENT
+
+1. **Import ONLY from components/ui**: Always import shadcn/ui components from `@/components/ui/[component-name]`
    ```typescript
    import { Button } from "@/components/ui/button"
    import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+   import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
    ```
 
-2. **Prefer shadcn/ui over custom components**: When a shadcn/ui component exists for your use case, use it instead of creating custom components.
+2. **MANDATORY: Use shadcn/ui for ALL UI needs**: Never create custom components when a shadcn/ui component exists.
 
-3. **Customize with className**: Use Tailwind classes with `className` prop for customization:
+3. **Customize ONLY with className**: Use Tailwind classes with `className` prop for customization:
    ```typescript
    <Button className="bg-primary hover:bg-primary/90" variant="default">
      Click me
@@ -57,18 +125,23 @@ Common components to install:
    - Button: `default`, `destructive`, `outline`, `secondary`, `ghost`, `link`
    - Card: Use with `CardHeader`, `CardContent`, `CardFooter` for proper structure
 
-## File Structure
+## File Structure - ENFORCED ORGANIZATION
 
-Components should be organized as:
+Components MUST be organized as:
 ```
 src/
 ├── components/
-│   ├── ui/           # shadcn/ui components (auto-generated)
-│   └── custom/       # Custom project-specific components
+│   └── ui/           # shadcn/ui components ONLY (auto-generated)
+│   └── [NO CUSTOM DIRECTORY ALLOWED]
 ├── lib/
 │   └── utils.ts      # Utility functions (includes cn helper)
 └── app/              # Next.js app router files
 ```
+
+**FORBIDDEN DIRECTORIES:**
+- ❌ `src/components/custom/`
+- ❌ `src/components/ui-custom/`
+- ❌ Any custom component directories
 
 ## TypeScript Integration
 
@@ -76,15 +149,16 @@ src/
 - Use proper TypeScript interfaces when extending components
 - Leverage the `cn()` utility function from `@/lib/utils` for conditional classes
 
-## Best Practices
+## Best Practices - MANDATORY COMPLIANCE
 
-1. **Always check if component exists**: Before creating a custom component, check if shadcn/ui has a suitable option
+1. **ALWAYS check shadcn/ui first**: Before any UI work, check if shadcn/ui has the component
 2. **Use semantic HTML**: shadcn/ui components follow accessibility best practices
 3. **Consistent spacing**: Use Tailwind spacing utilities consistently across components
 4. **Dark mode support**: shadcn/ui components support dark mode out of the box
 5. **Form validation**: Use shadcn/ui form components with react-hook-form for forms
+6. **Modal-first auth**: ALL authentication flows must use shadcn/ui Dialog components
 
-## Common Patterns
+## Common Patterns - APPROVED IMPLEMENTATIONS
 
 ### Loading States
 ```typescript
@@ -105,3 +179,45 @@ import { cn } from "@/lib/utils"
   Content
 </Card>
 ```
+
+### Authentication Modal Pattern
+```typescript
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { SignIn } from "@clerk/nextjs"
+
+<Dialog>
+  <DialogTrigger asChild>
+    <Button variant="default" className="w-full">
+      Sign In to Continue
+    </Button>
+  </DialogTrigger>
+  <DialogContent className="sm:max-w-md">
+    <SignIn />
+  </DialogContent>
+</Dialog>
+```
+
+## VIOLATIONS - ABSOLUTELY FORBIDDEN
+
+❌ **NEVER do any of these:**
+- Create custom button components
+- Create custom card components  
+- Create custom form components
+- Create custom modal/dialog components
+- Use raw HTML elements for UI (except basic semantic elements like `<main>`, `<section>`)
+- Use Clerk's default UI without shadcn/ui wrapper
+- Create any UI components outside of shadcn/ui ecosystem
+- Build custom UI libraries or component directories
+
+✅ **ALWAYS do these:**
+- Use shadcn/ui components for ALL UI needs
+- Wrap Clerk authentication in shadcn/ui Dialog components
+- Use shadcn/ui Button components for all interactive elements
+- Customize only through Tailwind className props
+- Follow shadcn/ui component composition patterns
+- Install required shadcn/ui components before building features
+
+## ENFORCEMENT
+
+This rule is NON-NEGOTIABLE. Any code that violates these guidelines MUST be refactored to use shadcn/ui components before proceeding with other development tasks.

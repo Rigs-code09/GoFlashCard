@@ -1,18 +1,34 @@
+
 ---
 alwaysApply: true
 ---
 
-# Database Interaction Rules
+# Database Interaction Rules - QUERY LAYER ENFORCEMENT
 
-All database interactions in this project MUST use Drizzle ORM with the defined schema. Follow these patterns strictly for consistency and type safety.
+All database interactions in this project MUST go through helper functions in the `db/queries` directory. **DIRECT DATABASE OPERATIONS ARE STRICTLY FORBIDDEN** in components, server actions, or any other application code.
+
+## CRITICAL RULE: DB/QUERIES DIRECTORY ONLY
+
+**ABSOLUTELY NO DIRECT DATABASE OPERATIONS ARE ALLOWED OUTSIDE OF `db/queries/`.**
+
+- ✅ **ONLY USE** query helper functions from `@/db/queries/`
+- ❌ **NEVER IMPORT** `db` directly in components, server actions, or pages
+- ❌ **NEVER WRITE** direct Drizzle queries outside of the queries directory
+- ❌ **NEVER ACCESS** database tables directly from application code
 
 ## Database Setup
 
-Always import from the centralized database configuration:
+The centralized database configuration should ONLY be used within query helper functions:
 
 ```typescript
+// ✅ CORRECT - Only in db/queries files
 import { db } from "@/db"
 import { decksTable, cardsTable } from "@/db/schema"
+```
+
+```typescript
+// ❌ INCORRECT - Never in components/actions
+import { db } from "@/db" // FORBIDDEN outside db/queries
 ```
 
 ## Schema Reference
@@ -33,16 +49,41 @@ import { decksTable, cardsTable } from "@/db/schema"
 - `createdAt`: Auto-generated timestamp
 - `updatedAt`: Auto-generated timestamp
 
-## CRUD Operations
+## Required Directory Structure
+
+Organize ALL database operations in the queries directory:
+
+```
+src/
+├── db/
+│   ├── index.ts          # Database connection (import only in queries/)
+│   ├── schema.ts         # Table schemas (import only in queries/)
+│   └── queries/          # ALL database operations MUST be here
+│       ├── index.ts      # Export all queries
+│       ├── deck-queries.ts
+│       ├── card-queries.ts
+│       └── user-queries.ts
+├── app/
+│   ├── actions/          # Server Actions (use queries only)
+│   └── [pages]/          # Pages (use queries only)
+└── components/           # Components (never access database)
+```
+
+## Query Helper Patterns
 
 ### Create Operations
 
-#### Create Deck
+#### Deck Queries (db/queries/deck-queries.ts)
 ```typescript
 import { db } from "@/db"
 import { decksTable } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
+import type { InferSelectModel, InferInsertModel } from "drizzle-orm"
 
-async function createDeck(title: string, description?: string, userId: string) {
+export type Deck = InferSelectModel<typeof decksTable>
+export type NewDeck = InferInsertModel<typeof decksTable>
+
+export async function createDeck(title: string, description: string | undefined, userId: string) {
   const [newDeck] = await db
     .insert(decksTable)
     .values({
@@ -54,36 +95,8 @@ async function createDeck(title: string, description?: string, userId: string) {
   
   return newDeck
 }
-```
 
-#### Create Card
-```typescript
-import { db } from "@/db"
-import { cardsTable } from "@/db/schema"
-
-async function createCard(deckId: number, front: string, back: string) {
-  const [newCard] = await db
-    .insert(cardsTable)
-    .values({
-      deckId,
-      front,
-      back,
-    })
-    .returning()
-  
-  return newCard
-}
-```
-
-### Read Operations
-
-#### Get User's Decks
-```typescript
-import { db } from "@/db"
-import { decksTable } from "@/db/schema"
-import { eq } from "drizzle-orm"
-
-async function getUserDecks(userId: string) {
+export async function getUserDecks(userId: string) {
   const decks = await db
     .select()
     .from(decksTable)
@@ -92,43 +105,20 @@ async function getUserDecks(userId: string) {
   
   return decks
 }
-```
 
-#### Get Deck with Cards
-```typescript
-import { db } from "@/db"
-import { decksTable, cardsTable } from "@/db/schema"
-import { eq } from "drizzle-orm"
-
-async function getDeckWithCards(deckId: number, userId: string) {
-  // Verify deck ownership
+export async function getDeckById(deckId: number, userId: string) {
   const [deck] = await db
     .select()
     .from(decksTable)
-    .where(eq(decksTable.id, deckId))
-    .where(eq(decksTable.userId, userId))
+    .where(and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    ))
   
-  if (!deck) return null
-  
-  const cards = await db
-    .select()
-    .from(cardsTable)
-    .where(eq(cardsTable.deckId, deckId))
-    .orderBy(cardsTable.createdAt)
-  
-  return { ...deck, cards }
+  return deck || null
 }
-```
 
-### Update Operations
-
-#### Update Deck
-```typescript
-import { db } from "@/db"
-import { decksTable } from "@/db/schema"
-import { eq, and } from "drizzle-orm"
-
-async function updateDeck(
+export async function updateDeck(
   deckId: number, 
   userId: string, 
   updates: { title?: string; description?: string }
@@ -147,20 +137,82 @@ async function updateDeck(
   
   return updatedDeck
 }
+
+export async function deleteDeck(deckId: number, userId: string) {
+  const [deletedDeck] = await db
+    .delete(decksTable)
+    .where(and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    ))
+    .returning()
+  
+  return deletedDeck
+}
 ```
 
-#### Update Card
+#### Card Queries (db/queries/card-queries.ts)
 ```typescript
 import { db } from "@/db"
 import { cardsTable, decksTable } from "@/db/schema"
-import { eq, and } from "drizzle-orm"
+import { eq, and, ilike, or } from "drizzle-orm"
+import type { InferSelectModel, InferInsertModel } from "drizzle-orm"
 
-async function updateCard(
+export type Card = InferSelectModel<typeof cardsTable>
+export type NewCard = InferInsertModel<typeof cardsTable>
+
+export async function createCard(deckId: number, front: string, back: string, userId: string) {
+  // Verify deck ownership first
+  const [deck] = await db
+    .select()
+    .from(decksTable)
+    .where(and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId)
+    ))
+  
+  if (!deck) {
+    throw new Error("Deck not found or access denied")
+  }
+
+  const [newCard] = await db
+    .insert(cardsTable)
+    .values({
+      deckId,
+      front,
+      back,
+    })
+    .returning()
+  
+  return newCard
+}
+
+export async function getDeckCards(deckId: number, userId: string) {
+  // Verify deck ownership
+  const cards = await db
+    .select({
+      id: cardsTable.id,
+      front: cardsTable.front,
+      back: cardsTable.back,
+      createdAt: cardsTable.createdAt,
+      updatedAt: cardsTable.updatedAt,
+    })
+    .from(cardsTable)
+    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+    .where(and(
+      eq(decksTable.userId, userId),
+      eq(cardsTable.deckId, deckId)
+    ))
+    .orderBy(cardsTable.createdAt)
+  
+  return cards
+}
+
+export async function updateCard(
   cardId: number,
   userId: string,
   updates: { front?: string; back?: string }
 ) {
-  // Verify ownership through deck relationship
   const [updatedCard] = await db
     .update(cardsTable)
     .set({
@@ -177,38 +229,8 @@ async function updateCard(
   
   return updatedCard
 }
-```
 
-### Delete Operations
-
-#### Delete Deck (with cascade)
-```typescript
-import { db } from "@/db"
-import { decksTable } from "@/db/schema"
-import { eq, and } from "drizzle-orm"
-
-async function deleteDeck(deckId: number, userId: string) {
-  // Cards will be automatically deleted due to cascade
-  const [deletedDeck] = await db
-    .delete(decksTable)
-    .where(and(
-      eq(decksTable.id, deckId),
-      eq(decksTable.userId, userId)
-    ))
-    .returning()
-  
-  return deletedDeck
-}
-```
-
-#### Delete Card
-```typescript
-import { db } from "@/db"
-import { cardsTable, decksTable } from "@/db/schema"
-import { eq, and } from "drizzle-orm"
-
-async function deleteCard(cardId: number, userId: string) {
-  // Verify ownership through deck relationship
+export async function deleteCard(cardId: number, userId: string) {
   const [deletedCard] = await db
     .delete(cardsTable)
     .from(cardsTable)
@@ -221,39 +243,8 @@ async function deleteCard(cardId: number, userId: string) {
   
   return deletedCard
 }
-```
 
-## Advanced Queries
-
-### Get Deck Statistics
-```typescript
-import { db } from "@/db"
-import { decksTable, cardsTable } from "@/db/schema"
-import { eq, count } from "drizzle-orm"
-
-async function getDeckStats(userId: string) {
-  const stats = await db
-    .select({
-      deckId: decksTable.id,
-      title: decksTable.title,
-      cardCount: count(cardsTable.id),
-    })
-    .from(decksTable)
-    .leftJoin(cardsTable, eq(decksTable.id, cardsTable.deckId))
-    .where(eq(decksTable.userId, userId))
-    .groupBy(decksTable.id, decksTable.title)
-  
-  return stats
-}
-```
-
-### Search Cards in Deck
-```typescript
-import { db } from "@/db"
-import { cardsTable, decksTable } from "@/db/schema"
-import { eq, and, ilike, or } from "drizzle-orm"
-
-async function searchCardsInDeck(deckId: number, userId: string, query: string) {
+export async function searchCardsInDeck(deckId: number, userId: string, query: string) {
   const cards = await db
     .select({
       id: cardsTable.id,
@@ -276,347 +267,120 @@ async function searchCardsInDeck(deckId: number, userId: string, query: string) 
 }
 ```
 
-## Security Rules
-
-### Always Verify User Ownership
-- **NEVER** perform operations without verifying `userId` matches the authenticated user
-- Always include `userId` in WHERE clauses for deck operations
-- For card operations, verify ownership through the deck relationship
-
-### Use Prepared Statements
-Drizzle automatically uses prepared statements, but always use parameterized queries:
-
+#### Query Index (db/queries/index.ts)
 ```typescript
-// ✅ CORRECT - Parameterized
-await db.select().from(decksTable).where(eq(decksTable.userId, userId))
+// Export all query functions
+export * from "./deck-queries"
+export * from "./card-queries"
 
-// ❌ INCORRECT - String interpolation
-await db.execute(sql`SELECT * FROM decks WHERE user_id = '${userId}'`)
+// Type exports
+export type { Deck, NewDeck } from "./deck-queries"
+export type { Card, NewCard } from "./card-queries"
 ```
 
-## Transaction Patterns
+## Server Action Usage Pattern
 
-### Bulk Operations
-```typescript
-import { db } from "@/db"
-import { cardsTable } from "@/db/schema"
-
-async function createMultipleCards(deckId: number, cards: Array<{ front: string; back: string }>) {
-  await db.transaction(async (tx) => {
-    // Verify deck ownership first
-    const [deck] = await tx
-      .select()
-      .from(decksTable)
-      .where(and(
-        eq(decksTable.id, deckId),
-        eq(decksTable.userId, userId)
-      ))
-    
-    if (!deck) {
-      throw new Error("Deck not found or access denied")
-    }
-    
-    // Insert all cards
-    await tx
-      .insert(cardsTable)
-      .values(cards.map(card => ({ ...card, deckId })))
-  })
-}
-```
-
-## Error Handling
-
-### Standard Error Patterns
-```typescript
-async function safeGetDeck(deckId: number, userId: string) {
-  try {
-    const [deck] = await db
-      .select()
-      .from(decksTable)
-      .where(and(
-        eq(decksTable.id, deckId),
-        eq(decksTable.userId, userId)
-      ))
-    
-    if (!deck) {
-      throw new Error("Deck not found")
-    }
-    
-    return deck
-  } catch (error) {
-    console.error("Database error:", error)
-    throw new Error("Failed to fetch deck")
-  }
-}
-```
-
-## Type Safety
-
-### Always use proper TypeScript types
-```typescript
-import type { InferSelectModel, InferInsertModel } from "drizzle-orm"
-import { decksTable, cardsTable } from "@/db/schema"
-
-export type Deck = InferSelectModel<typeof decksTable>
-export type NewDeck = InferInsertModel<typeof decksTable>
-export type Card = InferSelectModel<typeof cardsTable>
-export type NewCard = InferInsertModel<typeof cardsTable>
-```
-
-## Best Practices
-
-1. **Always use the schema imports** - Never write raw SQL
-2. **Include proper WHERE clauses** - Always verify user ownership
-3. **Use transactions for multiple operations** - Maintain data consistency
-4. **Return proper types** - Use `InferSelectModel` and `InferInsertModel`
-5. **Handle errors gracefully** - Provide meaningful error messages
-6. **Use proper ordering** - Always specify `orderBy` for predictable results
-7. **Leverage cascade deletes** - The schema handles card deletion when decks are deleted
-
-## Forbidden Patterns
-
-❌ **NEVER do these:**
-- Raw SQL queries without proper parameterization
-- Operations without user ownership verification
-- Direct table access without going through the schema
-- Mutations without proper error handling
-- Missing transaction boundaries for related operations
-
-✅ **Always do these:**
-- Use Drizzle schema and query builders
-- Verify user ownership for all operations
-- Handle errors with proper try/catch blocks
-- Use transactions for multi-table operations
-- Include proper TypeScript types # Database Interaction Rules
-
-All database interactions in this project MUST use Drizzle ORM with the defined schema. Follow these patterns strictly for consistency and type safety.
-
-## Database Setup
-
-Always import from the centralized database configuration:
+Server Actions MUST only use query helper functions, never direct database operations:
 
 ```typescript
-import { db } from "@/db"
-import { decksTable, cardsTable } from "@/db/schema"
-```
+// ✅ CORRECT - Server Action using query helpers
+"use server"
 
-## Schema Reference
+import { auth } from "@clerk/nextjs/server"
+import { createDeck, getUserDecks } from "@/db/queries"
+import { createDeckSchema, type CreateDeckInput } from "@/lib/validations"
+import { revalidatePath } from "next/cache"
 
-### Decks Table
-- `id`: Auto-generated primary key (integer)
-- `title`: Required varchar(255)
-- `description`: Optional text
-- `userId`: Required varchar(255) - Clerk user ID
-- `createdAt`: Auto-generated timestamp
-- `updatedAt`: Auto-generated timestamp
-
-### Cards Table
-- `id`: Auto-generated primary key (integer)
-- `deckId`: Required foreign key to decksTable.id (cascade delete)
-- `front`: Required text
-- `back`: Required text
-- `createdAt`: Auto-generated timestamp
-- `updatedAt`: Auto-generated timestamp
-
-## CRUD Operations
-
-### Create Operations
-
-#### Create Deck
-```typescript
-import { db } from "@/db"
-import { decksTable } from "@/db/schema"
-
-async function createDeck(title: string, description?: string, userId: string) {
-  const [newDeck] = await db
-    .insert(decksTable)
-    .values({
-      title,
-      description,
-      userId,
-    })
-    .returning()
+export async function createDeckAction(data: CreateDeckInput) {
+  const { userId } = await auth()
   
+  if (!userId) {
+    throw new Error("Unauthorized")
+  }
+  
+  const validatedData = createDeckSchema.parse(data)
+  
+  // Use query helper function
+  const newDeck = await createDeck(
+    validatedData.title,
+    validatedData.description,
+    userId
+  )
+  
+  revalidatePath("/decks")
   return newDeck
 }
-```
 
-#### Create Card
-```typescript
-import { db } from "@/db"
-import { cardsTable } from "@/db/schema"
-
-async function createCard(deckId: number, front: string, back: string) {
-  const [newCard] = await db
-    .insert(cardsTable)
-    .values({
-      deckId,
-      front,
-      back,
-    })
-    .returning()
+export async function getDecksAction() {
+  const { userId } = await auth()
   
-  return newCard
+  if (!userId) {
+    throw new Error("Unauthorized")
+  }
+  
+  // Use query helper function
+  return await getUserDecks(userId)
 }
 ```
 
-### Read Operations
-
-#### Get User's Decks
 ```typescript
-import { db } from "@/db"
-import { decksTable } from "@/db/schema"
-import { eq } from "drizzle-orm"
+// ❌ INCORRECT - Direct database operations in Server Action
+"use server"
 
-async function getUserDecks(userId: string) {
-  const decks = await db
-    .select()
-    .from(decksTable)
-    .where(eq(decksTable.userId, userId))
-    .orderBy(decksTable.createdAt)
-  
-  return decks
+import { db } from "@/db" // FORBIDDEN
+import { decksTable } from "@/db/schema" // FORBIDDEN
+
+export async function createDeckAction(data: CreateDeckInput) {
+  // NEVER do direct database operations here
+  const [newDeck] = await db.insert(decksTable).values(...) // FORBIDDEN
 }
 ```
 
-#### Get Deck with Cards
-```typescript
-import { db } from "@/db"
-import { decksTable, cardsTable } from "@/db/schema"
-import { eq } from "drizzle-orm"
+## Server Component Usage Pattern
 
-async function getDeckWithCards(deckId: number, userId: string) {
-  // Verify deck ownership
-  const [deck] = await db
-    .select()
-    .from(decksTable)
-    .where(eq(decksTable.id, deckId))
-    .where(eq(decksTable.userId, userId))
+Server Components MUST only use query helper functions:
+
+```typescript
+// ✅ CORRECT - Server Component using query helpers
+import { auth } from "@clerk/nextjs/server"
+import { redirect } from "next/navigation"
+import { getUserDecks } from "@/db/queries"
+
+export default async function DecksPage() {
+  const { userId } = await auth()
   
-  if (!deck) return null
+  if (!userId) {
+    redirect("/")
+  }
   
-  const cards = await db
-    .select()
-    .from(cardsTable)
-    .where(eq(cardsTable.deckId, deckId))
-    .orderBy(cardsTable.createdAt)
+  // Use query helper function
+  const decks = await getUserDecks(userId)
   
-  return { ...deck, cards }
+  return <DecksView decks={decks} />
 }
 ```
 
-### Update Operations
-
-#### Update Deck
 ```typescript
-import { db } from "@/db"
-import { decksTable } from "@/db/schema"
-import { eq, and } from "drizzle-orm"
+// ❌ INCORRECT - Direct database operations in Server Component
+import { db } from "@/db" // FORBIDDEN
+import { decksTable } from "@/db/schema" // FORBIDDEN
 
-async function updateDeck(
-  deckId: number, 
-  userId: string, 
-  updates: { title?: string; description?: string }
-) {
-  const [updatedDeck] = await db
-    .update(decksTable)
-    .set({
-      ...updates,
-      updatedAt: new Date(),
-    })
-    .where(and(
-      eq(decksTable.id, deckId),
-      eq(decksTable.userId, userId)
-    ))
-    .returning()
-  
-  return updatedDeck
+export default async function DecksPage() {
+  // NEVER do direct database operations here
+  const decks = await db.select().from(decksTable)... // FORBIDDEN
 }
 ```
 
-#### Update Card
+## Advanced Query Patterns
+
+### Complex Queries with Joins
 ```typescript
-import { db } from "@/db"
-import { cardsTable, decksTable } from "@/db/schema"
-import { eq, and } from "drizzle-orm"
-
-async function updateCard(
-  cardId: number,
-  userId: string,
-  updates: { front?: string; back?: string }
-) {
-  // Verify ownership through deck relationship
-  const [updatedCard] = await db
-    .update(cardsTable)
-    .set({
-      ...updates,
-      updatedAt: new Date(),
-    })
-    .from(cardsTable)
-    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
-    .where(and(
-      eq(cardsTable.id, cardId),
-      eq(decksTable.userId, userId)
-    ))
-    .returning()
-  
-  return updatedCard
-}
-```
-
-### Delete Operations
-
-#### Delete Deck (with cascade)
-```typescript
-import { db } from "@/db"
-import { decksTable } from "@/db/schema"
-import { eq, and } from "drizzle-orm"
-
-async function deleteDeck(deckId: number, userId: string) {
-  // Cards will be automatically deleted due to cascade
-  const [deletedDeck] = await db
-    .delete(decksTable)
-    .where(and(
-      eq(decksTable.id, deckId),
-      eq(decksTable.userId, userId)
-    ))
-    .returning()
-  
-  return deletedDeck
-}
-```
-
-#### Delete Card
-```typescript
-import { db } from "@/db"
-import { cardsTable, decksTable } from "@/db/schema"
-import { eq, and } from "drizzle-orm"
-
-async function deleteCard(cardId: number, userId: string) {
-  // Verify ownership through deck relationship
-  const [deletedCard] = await db
-    .delete(cardsTable)
-    .from(cardsTable)
-    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
-    .where(and(
-      eq(cardsTable.id, cardId),
-      eq(decksTable.userId, userId)
-    ))
-    .returning()
-  
-  return deletedCard
-}
-```
-
-## Advanced Queries
-
-### Get Deck Statistics
-```typescript
+// db/queries/analytics-queries.ts
 import { db } from "@/db"
 import { decksTable, cardsTable } from "@/db/schema"
 import { eq, count } from "drizzle-orm"
 
-async function getDeckStats(userId: string) {
+export async function getDeckStats(userId: string) {
   const stats = await db
     .select({
       deckId: decksTable.id,
@@ -632,62 +396,19 @@ async function getDeckStats(userId: string) {
 }
 ```
 
-### Search Cards in Deck
+### Transaction Patterns
 ```typescript
+// db/queries/bulk-operations.ts
 import { db } from "@/db"
 import { cardsTable, decksTable } from "@/db/schema"
-import { eq, and, ilike, or } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 
-async function searchCardsInDeck(deckId: number, userId: string, query: string) {
-  const cards = await db
-    .select({
-      id: cardsTable.id,
-      front: cardsTable.front,
-      back: cardsTable.back,
-      createdAt: cardsTable.createdAt,
-    })
-    .from(cardsTable)
-    .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
-    .where(and(
-      eq(decksTable.userId, userId),
-      eq(cardsTable.deckId, deckId),
-      or(
-        ilike(cardsTable.front, `%${query}%`),
-        ilike(cardsTable.back, `%${query}%`)
-      )
-    ))
-  
-  return cards
-}
-```
-
-## Security Rules
-
-### Always Verify User Ownership
-- **NEVER** perform operations without verifying `userId` matches the authenticated user
-- Always include `userId` in WHERE clauses for deck operations
-- For card operations, verify ownership through the deck relationship
-
-### Use Prepared Statements
-Drizzle automatically uses prepared statements, but always use parameterized queries:
-
-```typescript
-// ✅ CORRECT - Parameterized
-await db.select().from(decksTable).where(eq(decksTable.userId, userId))
-
-// ❌ INCORRECT - String interpolation
-await db.execute(sql`SELECT * FROM decks WHERE user_id = '${userId}'`)
-```
-
-## Transaction Patterns
-
-### Bulk Operations
-```typescript
-import { db } from "@/db"
-import { cardsTable } from "@/db/schema"
-
-async function createMultipleCards(deckId: number, cards: Array<{ front: string; back: string }>) {
-  await db.transaction(async (tx) => {
+export async function createMultipleCards(
+  deckId: number, 
+  userId: string,
+  cards: Array<{ front: string; back: string }>
+) {
+  return await db.transaction(async (tx) => {
     // Verify deck ownership first
     const [deck] = await tx
       .select()
@@ -702,18 +423,44 @@ async function createMultipleCards(deckId: number, cards: Array<{ front: string;
     }
     
     // Insert all cards
-    await tx
+    const newCards = await tx
       .insert(cardsTable)
       .values(cards.map(card => ({ ...card, deckId })))
+      .returning()
+    
+    return newCards
   })
 }
 ```
 
-## Error Handling
+## Security Rules - ENFORCED IN QUERIES
 
-### Standard Error Patterns
+### Always Verify User Ownership
+ALL query functions MUST verify user ownership when applicable:
+
 ```typescript
-async function safeGetDeck(deckId: number, userId: string) {
+// ✅ CORRECT - Ownership verification in query function
+export async function updateDeck(deckId: number, userId: string, updates: object) {
+  const [updatedDeck] = await db
+    .update(decksTable)
+    .set(updates)
+    .where(and(
+      eq(decksTable.id, deckId),
+      eq(decksTable.userId, userId) // CRITICAL: verify ownership
+    ))
+    .returning()
+  
+  if (!updatedDeck) {
+    throw new Error("Deck not found or access denied")
+  }
+  
+  return updatedDeck
+}
+```
+
+### Error Handling in Queries
+```typescript
+export async function safeGetDeck(deckId: number, userId: string) {
   try {
     const [deck] = await db
       .select()
@@ -735,41 +482,52 @@ async function safeGetDeck(deckId: number, userId: string) {
 }
 ```
 
-## Type Safety
-
-### Always use proper TypeScript types
-```typescript
-import type { InferSelectModel, InferInsertModel } from "drizzle-orm"
-import { decksTable, cardsTable } from "@/db/schema"
-
-export type Deck = InferSelectModel<typeof decksTable>
-export type NewDeck = InferInsertModel<typeof decksTable>
-export type Card = InferSelectModel<typeof cardsTable>
-export type NewCard = InferInsertModel<typeof cardsTable>
-```
-
-## Best Practices
-
-1. **Always use the schema imports** - Never write raw SQL
-2. **Include proper WHERE clauses** - Always verify user ownership
-3. **Use transactions for multiple operations** - Maintain data consistency
-4. **Return proper types** - Use `InferSelectModel` and `InferInsertModel`
-5. **Handle errors gracefully** - Provide meaningful error messages
-6. **Use proper ordering** - Always specify `orderBy` for predictable results
-7. **Leverage cascade deletes** - The schema handles card deletion when decks are deleted
-
-## Forbidden Patterns
+## Forbidden Patterns - STRICTLY ENFORCED
 
 ❌ **NEVER do these:**
-- Raw SQL queries without proper parameterization
-- Operations without user ownership verification
-- Direct table access without going through the schema
-- Mutations without proper error handling
-- Missing transaction boundaries for related operations
+- Import `db` directly in components, server actions, or pages
+- Import schema tables outside of `db/queries/` directory
+- Write Drizzle queries outside of query helper functions
+- Perform database operations without going through query helpers
+- Create database connections outside of the centralized configuration
 
-✅ **Always do these:**
-- Use Drizzle schema and query builders
-- Verify user ownership for all operations
-- Handle errors with proper try/catch blocks
-- Use transactions for multi-table operations
-- Include proper TypeScript types 
+✅ **ALWAYS do these:**
+- Use query helper functions from `@/db/queries` for ALL database operations
+- Organize queries by domain (decks, cards, users, etc.)
+- Include proper TypeScript types in query functions
+- Verify user ownership within query functions
+- Handle errors gracefully in query functions
+- Export all queries through the index file
+
+## Import Patterns
+
+### Correct Import Usage
+```typescript
+// ✅ In Server Actions or Server Components
+import { getUserDecks, createDeck, updateDeck } from "@/db/queries"
+import type { Deck, NewDeck } from "@/db/queries"
+
+// ✅ Only in db/queries files
+import { db } from "@/db"
+import { decksTable } from "@/db/schema"
+```
+
+### Forbidden Import Usage
+```typescript
+// ❌ NEVER in components/actions/pages
+import { db } from "@/db" // FORBIDDEN
+import { decksTable } from "@/db/schema" // FORBIDDEN
+import { eq } from "drizzle-orm" // FORBIDDEN outside queries
+```
+
+## ENFORCEMENT
+
+This rule is **ABSOLUTELY NON-NEGOTIABLE**. Any code that violates these guidelines by performing direct database operations outside of the `db/queries` directory MUST be refactored immediately. The query layer provides:
+
+1. **Centralized Data Access**: All database logic in one place
+2. **Security**: Consistent ownership verification
+3. **Maintainability**: Easy to modify database operations
+4. **Type Safety**: Proper TypeScript types for all operations
+5. **Testing**: Easy to mock and test database operations
+
+**NO EXCEPTIONS** - All database interactions must go through query helper functions. 

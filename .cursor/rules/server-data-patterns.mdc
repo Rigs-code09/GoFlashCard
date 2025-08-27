@@ -22,7 +22,7 @@ export default async function DecksPage() {
   const { userId } = await auth()
   
   if (!userId) {
-    redirect("/sign-in")
+    redirect("/")
   }
   
   const decks = await db
@@ -62,7 +62,7 @@ export default async function ProtectedPage() {
   const { userId } = await auth()
   
   if (!userId) {
-    redirect("/sign-in")
+    redirect("/")
   }
   
   // Now safe to fetch user-specific data

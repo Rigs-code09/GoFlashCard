@@ -1,11 +1,14 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { SignIn, SignUp } from "@clerk/nextjs"
+import { useAuth } from "@clerk/nextjs"
 import { dark } from "@clerk/themes"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -16,8 +19,18 @@ interface SignInModalProps {
 }
 
 export function SignInModal({ children }: SignInModalProps) {
+  const [open, setOpen] = useState(false)
+  const { isSignedIn } = useAuth()
+
+  // Close modal when user signs in
+  useEffect(() => {
+    if (isSignedIn) {
+      setOpen(false)
+    }
+  }, [isSignedIn])
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {children || (
           <Button variant="outline" size="sm">
@@ -28,9 +41,15 @@ export function SignInModal({ children }: SignInModalProps) {
       <DialogContent className="max-w-sm w-full mx-4 p-0 border-0 shadow-none">
         <DialogHeader className="sr-only">
           <DialogTitle>Sign In</DialogTitle>
+          <DialogDescription>
+            Access your flashcard decks by signing in to your account
+          </DialogDescription>
         </DialogHeader>
         <SignIn 
-          routing="hash"
+          routing="virtual"
+          redirectUrl="/dashboard"
+          afterSignInUrl="/dashboard"
+          signUpFallbackRedirectUrl="/dashboard"
           appearance={{
             baseTheme: dark,
             elements: {
@@ -53,8 +72,18 @@ interface SignUpModalProps {
 }
 
 export function SignUpModal({ children }: SignUpModalProps) {
+  const [open, setOpen] = useState(false)
+  const { isSignedIn } = useAuth()
+
+  // Close modal when user signs in
+  useEffect(() => {
+    if (isSignedIn) {
+      setOpen(false)
+    }
+  }, [isSignedIn])
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {children || (
           <Button variant="default" size="sm">
@@ -65,9 +94,15 @@ export function SignUpModal({ children }: SignUpModalProps) {
       <DialogContent className="max-w-sm w-full mx-4 p-0 border-0 shadow-none">
         <DialogHeader className="sr-only">
           <DialogTitle>Sign Up</DialogTitle>
+          <DialogDescription>
+            Create a new account to start building your flashcard collection
+          </DialogDescription>
         </DialogHeader>
         <SignUp 
-          routing="hash"
+          routing="virtual"
+          redirectUrl="/dashboard"
+          afterSignUpUrl="/dashboard"
+          signInFallbackRedirectUrl="/dashboard"
           appearance={{
             baseTheme: dark,
             elements: {

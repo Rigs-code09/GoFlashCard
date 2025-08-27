@@ -1,7 +1,17 @@
-import { Button } from "@/components/ui/button";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function Home() {
+
+export default async function Home() {
+  const { userId } = await auth();
+  
+  // Redirect authenticated users to dashboard
+  if (userId) {
+    redirect("/dashboard");
+  }
+
   return (
     <div className="min-h-[calc(100vh-73px)] bg-background">
       <div className="container mx-auto px-4 py-16">
@@ -16,15 +26,7 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Button size="lg" className="min-w-[140px]">
-              Get Started
-            </Button>
-            <Button variant="outline" size="lg" className="min-w-[140px]">
-              Browse Cards
-            </Button>
-          </div>
+
 
           {/* Features Preview */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16">
