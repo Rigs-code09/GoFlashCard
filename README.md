@@ -35,13 +35,6 @@ npm run dev
 
 ## Common Development Issues
 
-### SSL Certificate Errors
-If you encounter "unable to get local issuer certificate" errors (common in corporate networks):
-
-- The Next.js configuration has been set to handle SSL issues in development
-- These errors don't affect the application functionality
-- For Google Fonts failures, fallback fonts are automatically used
-
 ### Clerk Development Key Warning
 The warning "Clerk has been loaded with development keys" is normal for development environments:
 
